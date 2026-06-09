@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Firu</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#F4F9F6;color:#18241E;line-height:1.5}
+  .wrap{max-width:480px;margin:0 auto;padding:24px 18px 48px}
+  .card{background:#fff;border:1px solid #1217301f;border-radius:24px;padding:22px;box-shadow:0 12px 30px #14143a14;margin-bottom:16px}
+  .brand{color:#357A55;font-weight:800;letter-spacing:.5px;font-size:14px}
+  h1{font-size:26px;margin:6px 0 2px} h2{font-size:16px;margin:0 0 10px}
+  .muted{color:#566860;font-size:14px}
+  .avatar{width:104px;height:104px;border-radius:50%;object-fit:cover;display:block;margin:0 auto 10px;border:3px solid #357A5533}
+  .avatar.ph{display:flex;align-items:center;justify-content:center;background:#E2F1E8;font-size:40px}
+  .center{text-align:center}
+  .btn{display:block;width:100%;text-align:center;background:#357A55;color:#fff;text-decoration:none;font-weight:700;padding:14px;border-radius:14px;border:0;font-size:16px;margin-top:10px;cursor:pointer}
+  .btn.alt{background:#fff;color:#357A55;border:1.5px solid #357A5566}
+  .pill{display:inline-block;background:#DBF0EA;color:#357A55;font-weight:700;font-size:12px;padding:6px 12px;border-radius:999px}
+  .pill.warn{background:#FBE4DD;color:#B5482F}
+  label{display:block;font-weight:600;font-size:13px;margin:12px 0 4px}
+  input,textarea{width:100%;padding:12px;border:1px solid #1217302e;border-radius:12px;font-size:15px;font-family:inherit;background:#F4F9F6}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  td{padding:7px 4px;border-bottom:1px solid #1217301a;vertical-align:top}
+  td.k{color:#566860;white-space:nowrap;padding-right:12px}
+  .foot{text-align:center;color:#566860;font-size:12px;margin-top:18px}
+  .spin{text-align:center;padding:60px 0;color:#566860}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="app"><div class="spin">Cargando…</div></div>
+  <div class="foot">Hecho con 💚 por <b>Firu</b></div>
+</div>
+
+<script>
+  // La página está en un hosting estático (Cloudflare Pages); la función vive en
+  // Supabase, así que la URL es absoluta (la función tiene CORS abierto).
+  var FN = "https://wdtvhdykaboaixtnwgpr.supabase.co/functions/v1/pet-public";
+  var qs = new URLSearchParams(location.search);
+  var KIND = qs.get("k");        // 'found' | 'card'
+  var TOKEN = qs.get("t");
+  var app = document.getElementById("app");
+
+  function esc(s){
+    return String(s == null ? "" : s)
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  }
+  function sub(p){ return [p.species,p.breed].filter(Boolean).map(esc).join(" · "); }
+  function avatar(p){
+    return p.photo_url
+      ? '<img class="avatar" src="'+esc(p.photo_url)+'" alt="'+esc(p.name)+'"/>'
+      : '<div class="avatar ph">🐾</div>';
+  }
+  function notFound(msg){
+    app.innerHTML = '<div class="card center"><div class="brand">FIRU</div>'+
+      '<h1>No encontrado</h1><p class="muted">'+esc(msg||"Este código QR no es válido.")+'</p></div>';
+  }
+
+  function renderFound(p){
+    var head = '<div class="card center"><div class="brand">SI ME ENCUENTRAS</div>'+
+      avatar(p)+'<h1>'+esc(p.name)+'</h1><p class="muted">'+sub(p)+'</p>'+
+      (p.lost_mode
+        ? '<span class="pill warn">🆘 Reportado como perdido</span>'
+        : '<span class="pill">En casa, sano y salvo</span>')+'</div>';
+
+    var contact = "";
+    if (p.lost_mode){
+      var phone = (p.contact_phone||"").trim();
+      var email = (p.contact_email||"").trim();
+      var wa = phone.replace(/[^0-9]/g,"");
+      contact = '<div class="card"><h2>Contacta con su familia</h2>'+
+        (p.found_message ? '<p class="muted">'+esc(p.found_message)+'</p>' : '')+
+        (phone ? '<a class="btn" href="tel:'+esc(phone)+'">📞 Llamar a '+esc(phone)+'</a>' : '')+
+        (wa ? '<a class="btn alt" href="https://wa.me/'+esc(wa)+'">💬 WhatsApp</a>' : '')+
+        (email ? '<a class="btn alt" href="mailto:'+esc(email)+'">✉️ Enviar email</a>' : '')+
+        (!phone && !email ? '<p class="muted">Usa el formulario de abajo para avisarles.</p>' : '')+
+        '</div>';
+    } else {
+      contact = '<div class="card"><h2>Esta mascota no está reportada como perdida</h2>'+
+        '<p class="muted">Su familia no ha activado el aviso. Si crees que necesita ayuda, '+
+        'déjales un mensaje sin ver sus datos personales.</p></div>';
+    }
+
+    app.innerHTML = head + contact + sightingForm(p.lost_mode);
+    wireForm();
+  }
+
+  function sightingForm(lost){
+    return '<div class="card"><h2>'+(lost?"¿La has visto? Avisa a su familia":"Dejar un aviso")+'</h2>'+
+      '<form id="f">'+
+      '<label>Tu nombre (opcional)</label>'+
+      '<input name="finder_name" maxlength="80" placeholder="¿Cómo te llamas?"/>'+
+      '<label>Cómo contactarte (teléfono o email)</label>'+
+      '<input name="finder_contact" maxlength="120" placeholder="Para que te puedan responder"/>'+
+      '<label>Mensaje</label>'+
+      '<textarea name="finder_message" rows="3" maxlength="500" placeholder="Dónde la has visto, cómo está..."></textarea>'+
+      '<button class="btn alt" type="button" id="locBtn">📍 Adjuntar mi ubicación</button>'+
+      '<span class="muted" id="locSt"></span>'+
+      '<button class="btn" type="submit" id="sendBtn">Enviar aviso</button>'+
+      '</form></div>';
+  }
+
+  var coords = { lat:null, lng:null };
+  function wireForm(){
+    var f = document.getElementById("f");
+    if (!f) return;
+    document.getElementById("locBtn").onclick = function(){
+      var st = document.getElementById("locSt");
+      if (!navigator.geolocation){ st.textContent=" Geolocalización no disponible"; return; }
+      st.textContent = " Obteniendo…";
+      navigator.geolocation.getCurrentPosition(function(pos){
+        coords.lat = pos.coords.latitude; coords.lng = pos.coords.longitude;
+        st.textContent = " ✓ Ubicación adjuntada";
+      }, function(){ st.textContent = " No se pudo obtener la ubicación"; });
+    };
+    f.onsubmit = function(e){
+      e.preventDefault();
+      var btn = document.getElementById("sendBtn");
+      btn.disabled = true; btn.textContent = "Enviando…";
+      var body = {
+        finder_name: f.finder_name.value,
+        finder_contact: f.finder_contact.value,
+        finder_message: f.finder_message.value,
+        lat: coords.lat, lng: coords.lng
+      };
+      fetch(FN + "/found/" + encodeURIComponent(TOKEN), {
+        method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(body)
+      }).then(function(r){ return r.json(); }).then(function(){
+        app.innerHTML = '<div class="card center"><div class="brand">FIRU</div>'+
+          '<h1>¡Gracias! 💚</h1><p class="muted">Tu aviso ha llegado a la familia. '+
+          'Ojalá se reúnan pronto.</p></div>';
+      }).catch(function(){
+        btn.disabled = false; btn.textContent = "Enviar aviso";
+        alert("No se pudo enviar. Inténtalo de nuevo.");
+      });
+    };
+  }
+
+  function renderCard(p){
+    if (!p.enabled){
+      notFound("La familia no ha activado el carnet público de esta mascota.");
+      return;
+    }
+    var info = [];
+    if (p.species) info.push(["Especie", p.species]);
+    if (p.breed) info.push(["Raza", p.breed]);
+    if (p.sex) info.push(["Sexo", p.sex]);
+    if (p.microchip) info.push(["Microchip", p.microchip]);
+    if (p.weight) info.push(["Peso", p.weight]);
+    var infoRows = info.length
+      ? info.map(function(r){ return '<tr><td class="k">'+esc(r[0])+'</td><td>'+esc(r[1])+'</td></tr>'; }).join("")
+      : '<tr><td class="muted">Sin datos.</td></tr>';
+
+    var vac = (p.vaccines||[]);
+    var vacRows = vac.length
+      ? vac.map(function(v){ return '<tr><td class="k">'+esc(v.date)+'</td><td>'+esc(v.title)+
+          (v.description ? ' — <span class="muted">'+esc(v.description)+'</span>' : '')+'</td></tr>'; }).join("")
+      : '<tr><td colspan="2" class="muted">Sin vacunas registradas.</td></tr>';
+
+    var meds = (p.meds||[]);
+    var medRows = meds.length
+      ? meds.map(function(m){ return '<tr><td class="k">'+esc(m.name)+'</td><td>'+esc(m.dosage||"")+'</td></tr>'; }).join("")
+      : '<tr><td colspan="2" class="muted">Sin medicación activa.</td></tr>';
+
+    app.innerHTML =
+      '<div class="card center"><div class="brand">CARNET DE SALUD</div>'+avatar(p)+
+        '<h1>'+esc(p.name)+'</h1><p class="muted">'+sub(p)+'</p></div>'+
+      '<div class="card"><h2>Datos del animal</h2><table>'+infoRows+'</table></div>'+
+      (p.allergies ? '<div class="card"><h2>⚠️ Alergias / notas</h2><p>'+esc(p.allergies)+'</p></div>' : '')+
+      '<div class="card"><h2>Vacunas</h2><table>'+vacRows+'</table></div>'+
+      '<div class="card"><h2>Medicación activa</h2><table>'+medRows+'</table></div>';
+  }
+
+  if (!TOKEN || (KIND !== "found" && KIND !== "card")){
+    notFound("Enlace incompleto.");
+  } else {
+    fetch(FN + "/" + KIND + "/" + encodeURIComponent(TOKEN))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) { notFound(); return; }
+        if (KIND === "found") renderFound(d); else renderCard(d);
+      })
+      .catch(function(){ notFound("No se pudo cargar. Revisa tu conexión."); });
+  }
+</script>
+</body>
+</html>
